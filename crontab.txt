@@ -1,0 +1,10 @@
+# Daily Bellhaven sync — runs on the same host as the review app so both share data/bhsync.db.
+# The job only scrapes, matches and queues proposals. It never writes to the CRM:
+# writes happen only when a reviewer clicks Approve in the app.
+# Re-runs are safe: proposals already approved/rejected are fingerprinted and never re-queued.
+#
+# m h dom mon dow
+0 6 * * * cd /opt/bhsync && .venv/bin/python -m bhsync run >> logs/run.log 2>&1
+
+# Windows equivalent (Task Scheduler):
+# schtasks /Create /SC DAILY /ST 06:00 /TN "bhsync daily" /TR "cmd /c cd /d C:\bhsync && .venv\Scripts\python -m bhsync run >> logs\run.log 2>&1"

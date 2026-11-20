@@ -133,7 +133,12 @@ def _proposal(kind, issue_key, title, facility, account_id, slug, summary_, diff
 
 
 def _diff(account_id, acct, fields):
-    return [{"account_id": account_id, "field": f, "before": (acct or {}).get(f), "after": v}
+    """Display-only diff (writes come from `steps`); parent ids are shown with their names."""
+    def show(f, v, name=None):
+        return f"{name or (config.PARENT_NAME if v == config.PARENT_ID else '')} [{v}]".strip() \
+            if f == "parent_id" and v else v
+    return [{"account_id": account_id, "field": f,
+             "before": show(f, (acct or {}).get(f), (acct or {}).get("parent_name")), "after": show(f, v)}
             for f, v in fields.items() if f != "note"]
 
 
@@ -147,7 +152,7 @@ def facility_proposal(loc: Location, acct: dict, evidence: dict) -> dict | None:
         old_parent = acct["parent_name"] or "no parent"
         if decision["outcome"] == sop.CHOW:
             note = (f"CHOW successor of {aid} ({acct['name']}, previously under {old_parent}). Old account kept "
-                    f"for billing (revenue {decision['lifetime_revenue']:,.0f}, AR {decision['outstanding_ar']:,.0f}).")
+                    f"for billing (revenue {_amt(decision['lifetime_revenue'])}, AR {_amt(decision['outstanding_ar'])}).")
             fields = new_account_fields(loc, append_note("", note))
             # The old account is left exactly as it is apart from the pointer the SOP requires.
             return _proposal(
@@ -190,7 +195,10 @@ def duplicate_proposal(loser: dict, survivor: dict, loc: Location, ranking: list
         "DUPLICATE", f"DUPLICATE:{lid}", f"Mark {loser['name']} as duplicate of {survivor['name']}",
         loc.name, lid, loc.slug,
         f"Same address as surviving account {sid}. Parent left unchanged ({loser['parent_name'] or 'none'}).",
-        _diff(lid, loser, fields), {lid: {k: loser[k] for k in ("status", "duplicate_of_account", "note")}},
+        _diff(lid, loser, fields),
+        # The survivor is snapshotted too: if it stops being a live record, the pointer must not be written.
+        {lid: {k: loser[k] for k in ("status", "duplicate_of_account", "note")},
+         sid: {k: survivor[k] for k in ("duplicate_of_account", "chow_current_account")}},
         [{"op": "patch", "account_id": lid, "fields": fields}],
         {"website": loc.to_dict(), "match_rule": rule, "survivor_ranking": ranking})
 
@@ -269,6 +277,10 @@ def build(locations: list[Location], accounts: list[dict], contacts: list[dict],
     if not site_complete:
         warnings.append("Scrape incomplete: 'not on website' proposals withheld this run")
     return proposals, report, warnings
+
+
+def _amt(v) -> str:
+    return f"{v:,.0f}" if isinstance(v, (int, float)) else str(v)
 
 
 def _row(loc, cls, account_id, rule):

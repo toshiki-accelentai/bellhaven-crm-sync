@@ -7,7 +7,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from .models import APPLIED, KINDS, PENDING, REJECTED
+from .models import APPLIED, KINDS, NEEDS_REAPPROVAL, PENDING, REJECTED
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -50,9 +50,24 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 def fingerprint(p: dict) -> str:
-    """Identity of a proposal = issue + the evidence it was based on + exactly what it would write."""
-    raw = json.dumps([p["issue_key"], p["before"], p["steps"]], sort_keys=True)
+    """Identity of a proposal = issue + the data it was based on + what it would write.
+
+    Free-text notes are excluded: rewording an explanation must not resurrect a decided proposal.
+    """
+    def strip(d):
+        return {k: v for k, v in d.items() if k != "note"}
+    before = {aid: strip(f) for aid, f in p["before"].items()}
+    steps = [{**s, "fields": strip(s["fields"])} for s in p["steps"]]
+    raw = json.dumps([p["issue_key"], before, steps], sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def claim(conn: sqlite3.Connection, pid: int, statuses: tuple[str, ...]) -> bool:
+    """Atomically move a proposal to 'applying' so only one executor can write it."""
+    cur = conn.execute(f"UPDATE proposals SET status='applying' WHERE id=? AND status IN "
+                       f"({','.join('?' * len(statuses))})", (pid, *statuses))
+    conn.commit()
+    return cur.rowcount == 1
 
 
 def upsert_proposals(conn: sqlite3.Connection, proposals: list[dict]) -> tuple[int, int]:
@@ -64,7 +79,12 @@ def upsert_proposals(conn: sqlite3.Connection, proposals: list[dict]) -> tuple[i
     inserted = suppressed = 0
     for p in proposals:
         fp = fingerprint(p)
-        if conn.execute("SELECT 1 FROM proposals WHERE fingerprint=?", (fp,)).fetchone():
+        seen = conn.execute("SELECT id, status, body FROM proposals WHERE fingerprint=?", (fp,)).fetchone()
+        if seen:
+            if seen["status"] in (PENDING, NEEDS_REAPPROVAL):  # undecided: refresh evidence/notes in place
+                body = {**json.loads(seen["body"]), **p, "fingerprint": fp}
+                conn.execute("UPDATE proposals SET body=?, status=? WHERE id=?",
+                             (json.dumps(body), PENDING, seen["id"]))
             suppressed += 1
             continue
         # A newer version of the same issue supersedes an older still-pending one.

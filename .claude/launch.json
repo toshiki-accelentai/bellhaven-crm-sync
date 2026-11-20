@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "review-dry",
+      "runtimeExecutable": ".venv/Scripts/python",
+      "runtimeArgs": ["-m", "bhsync", "serve", "--dry-run", "--port", "5055"],
+      "port": 5055
+    }
+  ]
+}

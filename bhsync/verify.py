@@ -46,6 +46,20 @@ def verify(baseline: list[dict], live: list[dict], proposals: list[dict]) -> tup
     for aid in base.keys() - now.keys():
         fail(f"{aid} disappeared")
 
+    # Every applied proposal's intended values must actually be present (notes are free text: skipped).
+    for p in applied:
+        new_id = (p.get("result") or {}).get("new_id")
+        for s in p["steps"]:
+            target = new_id if s.get("account_id", "$new") == "$new" else s["account_id"]
+            live = now.get(target)
+            if not live:
+                fail(f"proposal #{p['id']} expected account {target} to exist")
+                continue
+            for f, v in s["fields"].items():
+                v = new_id if v == "$new" else v
+                if f != "note" and live.get(f) != v:
+                    fail(f"proposal #{p['id']}: {target}.{f} is {live.get(f)!r}, expected {v!r}")
+
     for aid, a in now.items():
         if a["chow_current_account"]:
             changed = {f for f in a if f not in IGNORED and a[f] != base.get(aid, {}).get(f)}

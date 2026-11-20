@@ -185,3 +185,78 @@ def test_dry_run_writes_nothing():
     for p in store.list_proposals(conn):
         apply.approve(conn, p["id"], crm, dry_run=True)
     assert crm.db == snapshot and crm.posts == 0
+
+
+# ---------- regressions for the Codex write-path review ----------
+
+def _one(conn, facility, kind=None):
+    p = next(p for p in build()[0] if p["facility"] == facility and (kind is None or p["kind"] == kind))
+    store.upsert_proposals(conn, [p])
+    return store.list_proposals(conn)[-1]["id"], p
+
+
+def test_post_lost_response_is_reconciled_not_reposted():
+    conn, crm = store.connect(":memory:"), FakeCRM(ACCOUNTS)
+    real = crm.create_account
+
+    def flaky(fields):  # account is created server-side, but the client sees a 502
+        real(fields)
+        raise CRMError("HTTP 502", 502)
+    crm.create_account = flaky
+    pid, _ = _one(conn, "Bellhaven of Batavia")
+    out = apply.approve(conn, pid, crm)
+    assert out["ok"] and crm.posts == 1
+
+
+def test_unknown_post_outcome_never_reposts():
+    conn, crm = store.connect(":memory:"), FakeCRM(ACCOUNTS)
+
+    def lost(fields):  # nothing created, outcome unknown
+        raise CRMError("timeout")
+    crm.create_account = lost
+    pid, _ = _one(conn, "Bellhaven of Batavia")
+    assert not apply.approve(conn, pid, crm)["ok"]
+    crm.create_account = lambda f: pytest.fail("must not POST again while the first outcome is unknown")
+    assert not apply.approve(conn, pid, crm)["ok"]
+
+
+def test_new_blocked_if_account_appeared_since():
+    conn, crm = store.connect(":memory:"), FakeCRM(ACCOUNTS)
+    pid, p = _one(conn, "Bellhaven of Batavia")
+    crm.create_account(p["steps"][0]["fields"])  # someone else created it meanwhile
+    out = apply.approve(conn, pid, crm)
+    assert out["status"] == "needs_reapproval" and crm.posts == 1
+
+
+def test_patch_that_landed_can_be_resumed():
+    conn, crm = store.connect(":memory:"), FakeCRM(ACCOUNTS)
+    pid, p = _one(conn, "Bellhaven Crossings of Lima")
+    crm.db[p["account_id"]].update(apply._render(p["steps"], "x")[0]["fields"])  # write landed, response lost
+    store.set_status(conn, pid, "error", reason="timeout")
+    assert apply.approve(conn, pid, crm)["ok"]
+
+
+def test_claim_blocks_second_executor():
+    conn = store.connect(":memory:")
+    pid, _ = _one(conn, "Bellhaven Crossings of Lima")
+    assert store.claim(conn, pid, apply.APPROVABLE)
+    assert not apply.approve(conn, pid, FakeCRM(ACCOUNTS))["ok"]
+
+
+def test_verify_fails_when_applied_change_is_missing():
+    conn, crm = store.connect(":memory:"), FakeCRM(ACCOUNTS)
+    pid, p = _one(conn, "Bellhaven Crossings of Lima")
+    assert apply.approve(conn, pid, crm)["ok"]
+    crm.db[p["account_id"]]["parent_id"] = ACCOUNTS[0]["parent_id"]  # silently reverted later
+    assert not verify(ACCOUNTS, crm.accounts(), store.list_proposals(conn))[0]
+
+
+def test_note_rewording_does_not_resurrect_rejected():
+    conn = store.connect(":memory:")
+    props = build()[0]
+    store.upsert_proposals(conn, props)
+    for p in store.list_proposals(conn):
+        store.reject(conn, p["id"])
+    reworded = [{**p, "steps": [{**s, "fields": {**s["fields"], "note": "different"}} for s in p["steps"]]}
+                for p in props]
+    assert store.upsert_proposals(conn, reworded) == (0, len(props))

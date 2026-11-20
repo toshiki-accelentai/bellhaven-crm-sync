@@ -260,3 +260,13 @@ def test_note_rewording_does_not_resurrect_rejected():
     reworded = [{**p, "steps": [{**s, "fields": {**s["fields"], "note": "different"}} for s in p["steps"]]}
                 for p in props]
     assert store.upsert_proposals(conn, reworded) == (0, len(props))
+
+
+def test_reopen_reverses_rejection_and_keeps_audit():
+    conn = store.connect(":memory:")
+    store.upsert_proposals(conn, build()[0][:1])
+    store.reject(conn, 1, "cosmetic only")
+    assert store.reopen(conn, 1, "policy: align names") and store.get(conn, 1)["status"] == "pending"
+    assert "cosmetic only" in store.get(conn, 1)["reason"]
+    assert conn.execute("SELECT count(*) FROM audit WHERE method='REOPEN'").fetchone()[0] == 1
+    assert not store.reopen(conn, 1, "again")  # only rejected proposals can be reopened

@@ -138,6 +138,18 @@ def save_progress(conn: sqlite3.Connection, pid: int, result: dict) -> None:
     conn.commit()
 
 
+def reopen(conn: sqlite3.Connection, pid: int, why: str) -> bool:
+    """A human reverses a rejection: back to pending, with the earlier decision kept in the audit log."""
+    r = conn.execute("SELECT status, reason FROM proposals WHERE id=?", (pid,)).fetchone()
+    if not r or r["status"] != REJECTED:
+        return False
+    audit(conn, pid, "REOPEN", "", {"previous_reason": r["reason"], "why": why}, None, None)
+    conn.execute("UPDATE proposals SET status=?, reason=?, decided_at=NULL WHERE id=?",
+                 (PENDING, f"Reopened (was rejected: {r['reason'] or 'no reason'}). {why}"[:500], pid))
+    conn.commit()
+    return True
+
+
 def reject(conn: sqlite3.Connection, pid: int, reason: str = "") -> None:
     set_status(conn, pid, REJECTED, reason=reason.strip()[:500])
 

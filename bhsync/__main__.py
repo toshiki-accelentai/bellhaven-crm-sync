@@ -62,6 +62,11 @@ def cmd_verify(conn, args):
     sys.exit(0 if ok else 1)
 
 
+def cmd_reopen(conn, args):
+    ok = store.reopen(conn, args.id, args.why)
+    print(f"proposal #{args.id} reopened" if ok else f"proposal #{args.id} is not rejected; nothing changed")
+
+
 def _dump(path, obj):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, indent=1)
@@ -76,9 +81,12 @@ def main():
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--port", type=int, default=5000)
     sub.add_parser("verify", help="prove every CRM change since the first run was approved")
+    r = sub.add_parser("reopen", help="reverse a rejection (back to pending; earlier decision kept in audit)")
+    r.add_argument("id", type=int)
+    r.add_argument("why")
     args = ap.parse_args()
     conn = store.connect(config.DB_PATH)
-    {"run": cmd_run, "report": cmd_report, "serve": cmd_serve, "verify": cmd_verify}[args.cmd](conn, args)
+    {"run": cmd_run, "report": cmd_report, "serve": cmd_serve, "verify": cmd_verify, "reopen": cmd_reopen}[args.cmd](conn, args)
 
 
 if __name__ == "__main__":

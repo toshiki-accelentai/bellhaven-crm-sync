@@ -9,7 +9,10 @@ scrape website ──► match to CRM ──► proposals (SQLite) ──► rev
 
 ## What changed in the CRM
 
-_Filled in after review. Paste the `python -m bhsync verify` output here._
+**Final state:**
+- **Decisions:** 29 of 29 proposals reviewed and approved, 0 API errors.
+- **Proof:** `python -m bhsync verify` → `PASS: 29 applied proposals, 31 account changes explained`. Every changed field on every account traces to an approved proposal, and no other account changed.
+- **Re-run afterwards:** `35 locations, 127 accounts -> 0 findings`. All 35 website communities are now confident matches, and nothing is re-proposed.
 
 | Finding | Count | What I did |
 |---|---|---|
@@ -30,6 +33,9 @@ _Filled in after review. Paste the `python -m bhsync verify` output here._
 - **Duplicate survivor** = has revenue → most contacts → already under Bellhaven → name closest to the website → lowest id. The ranking is shown on every card. Losers keep their old parent: they are history, not live facilities. **Contacts on losers are not moved** (no merge exists, and moving contacts is a separate decision); the loser's note points to the survivor.
 - **Ashtabula's PO Box** is replaced with the physical address, because every other account in this CRM stores the facility's physical address in `billing_street`. The PO box is preserved in the note in case billing needs it.
 - **Cosmetic renames** (e.g. *Health Care Center* → *Healthcare Centre*) are proposed but grouped last. They matter for reps searching by the name on the sign, but they're low-risk.
+  - In the demo I rejected one (Sycamore Ridge, "of" → "at", reason "cosmetic only") to show the reject path.
+  - When I reached the other three, I decided the consistent policy is to align every name with the website, so I reversed that rejection with `python -m bhsync reopen 2 "<why>"`.
+  - The original rejection and its reason stay in the audit log. Human decisions can be reversed, but never silently.
 - **Parent accounts (Harborview, Cedar Trail) are untouched.** An acquired portfolio still has a legal entity; that is not something to infer from a website.
 - **No LLM in the pipeline.** Every decision has to be explainable on a review card and reproducible run to run; deterministic rules do that, and an LLM would add cost and variance. I used AI heavily to *build* and *review* the system, not to run it.
 
@@ -59,7 +65,7 @@ copy .env.example .env        # then set BH_TOKEN
 .venv\Scripts\python -m bhsync serve      # review app at http://127.0.0.1:5000  (--dry-run to rehearse)
 .venv\Scripts\python -m bhsync verify     # prove the end state
 .venv\Scripts\python -m bhsync report     # classification of every location
-.venv\Scripts\python -m pytest -q         # 31 tests, no network
+.venv\Scripts\python -m pytest -q         # 39 tests, no network
 ```
 
 Daily schedule: [`crontab.txt`](crontab.txt) (cron + Windows Task Scheduler line). The job runs on the reviewer's host because proposals and decisions live in one SQLite file. GitHub Actions would need that state moved to a shared database first, which is the production upgrade path (Postgres).
@@ -74,7 +80,7 @@ Business rules you'd change live are all in [`bhsync/config.py`](bhsync/config.p
 | `bhsync/crm.py` | API client (paging, retries on reads, no blind POST retry) |
 | `bhsync/match.py` | matching, survivor choice, proposal building (pure, deterministic) |
 | `bhsync/sop.py` | CHOW vs re-parent decision |
-| `bhsync/store.py` | SQLite: proposals, fingerprints, decisions, audit log |
+| `bhsync/store.py` | SQLite: proposals, fingerprints, decisions, reopen, audit log |
 | `bhsync/apply.py` | approve → re-validate → write → confirm; resumable |
 | `bhsync/app.py` | Flask review app |
 | `bhsync/verify.py` | end-state proof |
@@ -90,9 +96,18 @@ Business rules you'd change live are all in [`bhsync/config.py`](bhsync/config.p
 
 - **Claude Code (Opus):** lead. Explored the site and API read-only, wrote the plan, the matcher, the SOP and the write path.
 - **Two Sonnet subagents:** built the scraper and the review app, each against a fixed interface with its own tests.
-- **Codex (`gpt-6.1-sol`):** independently reviewed the plan before any code (11 findings, 9 accepted, 2 partly accepted, reasons recorded in `PLAN.md` §9). It reviewed the write path again before the first real CRM write.
+- **Codex (`gpt-6.1-sol`):** independently reviewed the plan before any code (11 findings, 9 accepted, 2 partly accepted, reasons recorded in `PLAN.md` §9). It reviewed the write path again before the first real CRM write and found 2 critical issues (double-create on a lost POST response or on concurrent approvals) and 6 important ones. All 8 were fixed, each with a regression test.
 - **Verification was done by me, not trusted from the tools:** a hand-built expectation table from the raw data became the golden test, plus the mutation check, a live dry-run through the UI, and `verify` on the real CRM.
 
 ## Time
 
-_Filled in at the end._
+Timeline from file, commit and audit timestamps (local time). Elapsed wall-clock time includes breaks.
+
+| Phase | When | Notes |
+|---|---|---|
+| Read brief, explore site + API read-only, plan, Codex plan review | 08:05 – 09:19 | ~75 min; plan in `PLAN.md` |
+| Build: scraper, matcher, SOP, write path, app, verifier; Codex write-path review + fixes | 09:19 – 09:41 | built with AI agents in parallel; 38 tests |
+| First real write (Portsmouth), checked in the audit log + CRM before continuing | 09:50 | |
+| Review UI rework for the demo, review of all proposals, demo recording | later in the day, finished 15:52 | |
+
+**Focused time:** _≈ X h (fill in honestly)_

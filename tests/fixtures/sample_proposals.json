@@ -1,0 +1,54 @@
+[
+  {
+    "issue_key": "FACILITY:bellhaven-of-tiffin",
+    "kind": "CHOW",
+    "title": "CHOW: create new Bellhaven account for Bellhaven of Tiffin; point old account at it",
+    "facility": "Bellhaven of Tiffin",
+    "account_id": "001ABCWSXZZB",
+    "slug": "bellhaven-of-tiffin",
+    "summary": "Owned by Cedar Trail in CRM, listed on Bellhaven website. Revenue $84,000 and AR $12,400 > 0 -> SOP requires CHOW, old account preserved.",
+    "diff": [
+      {"account_id": "$new", "field": "name", "before": null, "after": "Bellhaven of Tiffin"},
+      {"account_id": "$new", "field": "parent_id", "before": null, "after": "0015QAPLGS3FVYEEEM"},
+      {"account_id": "001ABCWSXZZB", "field": "chow_current_account", "before": "", "after": "$new"}
+    ],
+    "before": {"001ABCWSXZZB": {"parent_id": "001FWSQ30SFW6S7604", "chow_current_account": "", "lifetime_revenue": 84000, "outstanding_ar": 12400}},
+    "steps": [
+      {"op": "create", "ref": "new", "fields": {"name": "Bellhaven of Tiffin", "parent_id": "0015QAPLGS3FVYEEEM", "billing_street": "45 St Lawrence Dr", "billing_city": "Tiffin", "billing_state": "OH", "billing_zip": "44883", "care_type": "Skilled Nursing", "status": "Active", "note": "[bhsync 2026-11-20] CHOW successor of 001ABCWSXZZB"}},
+      {"op": "patch", "account_id": "001ABCWSXZZB", "fields": {"chow_current_account": "$new"}}
+    ],
+    "evidence": {
+      "website": {"slug": "bellhaven-of-tiffin", "url": "https://analyst-assessment-production.up.railway.app/communities/bellhaven-of-tiffin", "name": "Bellhaven of Tiffin", "street": "45 St Lawrence Dr", "city": "Tiffin", "state": "OH", "zip": "44883", "offerings": ["Short-Term Rehabilitation & Nursing"], "administrator": "Jo Smith", "phone": "(419) 555-0100"},
+      "match_rule": "A: address+zip",
+      "candidates": [{"account_id": "001ABCWSXZZB", "name": "Bellhaven of Tiffin", "street": "45 St Lawrence Dr", "city": "Tiffin", "state": "OH", "zip": "44883", "parent_id": "001FWSQ30SFW6S7604", "parent_name": "Cedar Trail Communities (Parent Account)", "status": "Active", "care_type": "Skilled Nursing", "lifetime_revenue": 84000, "outstanding_ar": 12400, "contacts": 0}],
+      "near_misses": [],
+      "sop": {"lifetime_revenue": 84000, "outstanding_ar": 12400, "outcome": "CHOW", "reason": "revenue history and outstanding AR > 0"},
+      "survivor_ranking": null,
+      "notes": ["About page: select Cedar Trail communities joined Bellhaven in 2026."]
+    }
+  },
+  {
+    "issue_key": "DUPLICATE:001ABCLTSN24",
+    "kind": "DUPLICATE",
+    "title": "Mark Harborview Nursing & Rehab of Port Clinton as duplicate of Bellhaven of Port Clinton",
+    "facility": "Bellhaven of Port Clinton",
+    "account_id": "001ABCLTSN24",
+    "slug": "bellhaven-of-port-clinton",
+    "summary": "Same address (1420 Harbor Point Dr, 43452) as the surviving account.",
+    "diff": [
+      {"account_id": "001ABCLTSN24", "field": "duplicate_of_account", "before": "", "after": "001ABCKB8932"},
+      {"account_id": "001ABCLTSN24", "field": "status", "before": "Active", "after": "Inactive"}
+    ],
+    "before": {"001ABCLTSN24": {"status": "Active", "duplicate_of_account": "", "note": ""}},
+    "steps": [{"op": "patch", "account_id": "001ABCLTSN24", "fields": {"duplicate_of_account": "001ABCKB8932", "status": "Inactive", "note": "[bhsync 2026-11-20] Duplicate of 001ABCKB8932 (same address)."}}],
+    "evidence": {
+      "website": null,
+      "match_rule": "A: address+zip",
+      "candidates": [],
+      "near_misses": [],
+      "sop": null,
+      "survivor_ranking": ["001ABCKB8932 Bellhaven of Port Clinton: contacts=2, under Bellhaven (survivor)", "001ABCLTSN24 Harborview Nursing & Rehab of Port Clinton: contacts=0"],
+      "notes": []
+    }
+  }
+]

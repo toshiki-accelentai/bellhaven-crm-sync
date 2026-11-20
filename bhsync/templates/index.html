@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% macro acct(i) %}{% if i == "$new" %}(new account){% elif i %}<a href="{{ crm(i) }}" target="_blank" rel="noopener">{{ i }}</a>{% endif %}{% endmacro %}
+{% macro accts(rows) %}{% if rows %}<table><tr><th>Account</th><th>Name</th><th>Address</th><th>Parent</th><th>Status</th><th>Revenue</th><th>AR</th><th>Contacts</th></tr>
+{% for a in rows %}<tr><td>{{ acct(a.account_id) }}</td><td>{{ a.name }}</td><td>{{ a.street }}, {{ a.city }} {{ a.state }} {{ a.zip }}</td><td>{{ a.parent_name }}</td><td>{{ a.status }}</td><td>{{ a.lifetime_revenue|money }}</td><td>{{ a.outstanding_ar|money }}</td><td>{{ a.contacts }}</td></tr>{% endfor %}</table>{% else %}<div class="meta">none</div>{% endif %}{% endmacro %}
+{% block body %}
+<h1>Bellhaven CRM sync review</h1>
+<div class="tabs"><a href="/?view=pending" class="{{ 'on' if view == 'pending' }}">Pending</a><a href="/?view=decided" class="{{ 'on' if view == 'decided' }}">Decided</a></div>
+<div class="counts">{% for s, n in status_counts.items() %}<span><b>{{ n }}</b> {{ s }}</span>{% endfor %}<br>
+{% for k in kinds if kind_counts[k] %}<span class="badge {{ k }}">{{ k }} {{ kind_counts[k] }}</span>{% endfor %}</div>
+{% for p in proposals %}{% set ev = p.evidence %}
+<section class="card" id="p{{ p.id }}">
+  <span class="badge {{ p.kind }}">{{ p.kind }}</span><span class="badge status">{{ p.status }}</span>{% if p.recurrence %}<span class="badge tag">recurrence</span>{% endif %}
+  <h3>{{ p.title }}</h3>
+  <div class="meta">#{{ p.id }} · {{ p.facility }}</div>
+  <p>{{ p.summary }}</p>
+  <table><tr><th>Account</th><th>Field</th><th>Before → After</th></tr>
+  {% for d in p.diff %}<tr><td>{{ acct(d.account_id) }}</td><td>{{ d.field }}</td><td>{{ d.before if d.before is not none else "" }} → {% if d.after == "$new" %}(new account){% else %}{{ d.after if d.after is not none else "" }}{% endif %}</td></tr>{% endfor %}</table>
+  {% if ev.sop %}<div class="sop"><b>SOP:</b> lifetime revenue <b>{{ ev.sop.lifetime_revenue|money }}</b>, outstanding AR <b>{{ ev.sop.outstanding_ar|money }}</b> → <b>{{ ev.sop.outcome }}</b><div class="meta">{{ ev.sop.reason }}</div></div>{% endif %}
+  {% if ev.website %}{% set w = ev.website %}<div class="box"><b>Website:</b>
+    {% if safe_http(w.url) %}<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.name }}</a>{% else %}{{ w.name }}{% endif %}
+    · {{ w.street }}, {{ w.city }} {{ w.state }} {{ w.zip }} · {{ (w.offerings or [])|join(", ") }}</div>{% endif %}
+  <div class="meta">Match rule: {{ ev.match_rule }}</div>
+  <h4>Candidates</h4>{{ accts(ev.candidates) }}
+  <h4>Near misses</h4>{{ accts(ev.near_misses) }}
+  {% if ev.survivor_ranking %}<h4>Survivor ranking</h4><ol>{% for r in ev.survivor_ranking %}<li>{{ r }}</li>{% endfor %}</ol>{% endif %}
+  {% if ev.notes %}<h4>Notes</h4><ul>{% for n in ev.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  <details><summary>Exact steps (JSON)</summary><pre>{{ p.steps|pretty }}</pre></details>
+  {% if p.decided_at %}<div class="box">Decided {{ p.decided_at }}{% if p.reason %} · {{ p.reason }}{% endif %}
+    {% if p.result %}<pre>{{ p.result|pretty }}</pre>{% endif %}
+    {% if p.status == "applied" %}Touched: {% for i in touched(p) %}{{ acct(i) }} {% endfor %}{% endif %}</div>
+  {% elif p.reason %}<div class="box">{{ p.reason }}</div>{% endif %}
+  {% if p.status in approvable %}<div class="actions">
+    <form method="post" action="/proposals/{{ p.id }}/approve" onsubmit="this.querySelector('button').disabled=true"><button class="go">Approve</button></form>
+    <form method="post" action="/proposals/{{ p.id }}/reject" onsubmit="this.querySelector('button').disabled=true"><input name="reason" maxlength="500" placeholder="Reject reason (optional)" size="40"> <button class="no">Reject</button></form>
+  </div>{% endif %}
+</section>
+{% else %}<p class="meta">Nothing here.</p>{% endfor %}
+{% endblock %}

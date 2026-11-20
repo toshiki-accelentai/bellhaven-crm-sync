@@ -1,38 +1,122 @@
 {% extends "base.html" %}
-{% macro acct(i) %}{% if i == "$new" %}(new account){% elif i %}<a href="{{ crm(i) }}" target="_blank" rel="noopener">{{ i }}</a>{% endif %}{% endmacro %}
-{% macro accts(rows) %}{% if rows %}<table><tr><th>Account</th><th>Name</th><th>Address</th><th>Parent</th><th>Status</th><th>Revenue</th><th>AR</th><th>Contacts</th></tr>
-{% for a in rows %}<tr><td>{{ acct(a.account_id) }}</td><td>{{ a.name }}</td><td>{{ a.street }}, {{ a.city }} {{ a.state }} {{ a.zip }}</td><td>{{ a.parent_name }}</td><td>{{ a.status }}</td><td>{{ a.lifetime_revenue|money }}</td><td>{{ a.outstanding_ar|money }}</td><td>{{ a.contacts }}</td></tr>{% endfor %}</table>{% else %}<div class="meta">none</div>{% endif %}{% endmacro %}
+{% macro acct(i) %}{% if i == "$new" %}<em>new account</em>{% elif i %}<a class="mono" href="{{ crm(i) }}" target="_blank" rel="noopener">{{ i }}</a>{% endif %}{% endmacro %}
+{% macro kind(k) %}<span class="kind k-{{ k }}"><span class="dot" aria-hidden="true"></span>{{ labels[k] }}</span>{% endmacro %}
+{% macro accts(rows) %}
+<table><thead><tr><th>Account</th><th>Name</th><th>Address</th><th>Parent</th><th>Status</th><th>Revenue</th><th>AR</th><th>Contacts</th></tr></thead><tbody>
+{% for a in rows %}<tr><td>{{ acct(a.account_id) }}</td><td>{{ a.name }}</td><td>{{ a.street }}, {{ a.city }} {{ a.state }} {{ a.zip }}</td>
+<td>{{ a.parent_name or "—" }}</td><td>{{ a.status }}</td><td>{{ a.lifetime_revenue|money }}</td><td>{{ a.outstanding_ar|money }}</td><td>{{ a.contacts }}</td></tr>{% endfor %}
+</tbody></table>{% endmacro %}
+
 {% block body %}
-<h1>Bellhaven CRM sync review</h1>
-<div class="tabs"><a href="/?view=pending" class="{{ 'on' if view == 'pending' }}">Pending</a><a href="/?view=decided" class="{{ 'on' if view == 'decided' }}">Decided</a></div>
-<div class="counts">{% for s, n in status_counts.items() %}<span><b>{{ n }}</b> {{ s }}</span>{% endfor %}<br>
-{% for k in kinds if kind_counts[k] %}<span class="badge {{ k }}">{{ k }} {{ kind_counts[k] }}</span>{% endfor %}</div>
-{% for p in proposals %}{% set ev = p.evidence %}
-<section class="card" id="p{{ p.id }}">
-  <span class="badge {{ p.kind }}">{{ p.kind }}</span><span class="badge status">{{ p.status }}</span>{% if p.recurrence %}<span class="badge tag">recurrence</span>{% endif %}
-  <h3>{{ p.title }}</h3>
-  <div class="meta">#{{ p.id }} · {{ p.facility }}</div>
-  <p>{{ p.summary }}</p>
-  <table><tr><th>Account</th><th>Field</th><th>Before → After</th></tr>
-  {% for d in p.diff %}<tr><td>{{ acct(d.account_id) }}</td><td>{{ d.field }}</td><td>{{ d.before if d.before is not none else "" }} → {% if d.after == "$new" %}(new account){% else %}{{ d.after if d.after is not none else "" }}{% endif %}</td></tr>{% endfor %}</table>
-  {% if ev.sop %}<div class="sop"><b>SOP:</b> lifetime revenue <b>{{ ev.sop.lifetime_revenue|money }}</b>, outstanding AR <b>{{ ev.sop.outstanding_ar|money }}</b> → <b>{{ ev.sop.outcome }}</b><div class="meta">{{ ev.sop.reason }}</div></div>{% endif %}
-  {% if ev.website %}{% set w = ev.website %}<div class="box"><b>Website:</b>
-    {% if safe_http(w.url) %}<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.name }}</a>{% else %}{{ w.name }}{% endif %}
-    · {{ w.street }}, {{ w.city }} {{ w.state }} {{ w.zip }} · {{ (w.offerings or [])|join(", ") }}</div>{% endif %}
-  <div class="meta">Match rule: {{ ev.match_rule }}</div>
-  <h4>Candidates</h4>{{ accts(ev.candidates) }}
-  <h4>Near misses</h4>{{ accts(ev.near_misses) }}
-  {% if ev.survivor_ranking %}<h4>Survivor ranking</h4><ol>{% for r in ev.survivor_ranking %}<li>{{ r }}</li>{% endfor %}</ol>{% endif %}
-  {% if ev.notes %}<h4>Notes</h4><ul>{% for n in ev.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
-  <details><summary>Exact steps (JSON)</summary><pre>{{ p.steps|pretty }}</pre></details>
-  {% if p.decided_at %}<div class="box">Decided {{ p.decided_at }}{% if p.reason %} · {{ p.reason }}{% endif %}
-    {% if p.result %}<pre>{{ p.result|pretty }}</pre>{% endif %}
-    {% if p.status == "applied" %}Touched: {% for i in touched(p) %}{{ acct(i) }} {% endfor %}{% endif %}</div>
-  {% elif p.reason %}<div class="box">{{ p.reason }}</div>{% endif %}
-  {% if p.status in approvable %}<div class="actions">
-    <form method="post" action="/proposals/{{ p.id }}/approve" onsubmit="this.querySelector('button').disabled=true"><button class="go">Approve</button></form>
-    <form method="post" action="/proposals/{{ p.id }}/reject" onsubmit="this.querySelector('button').disabled=true"><input name="reason" maxlength="500" placeholder="Reject reason (optional)" size="40"> <button class="no">Reject</button></form>
-  </div>{% endif %}
-</section>
-{% else %}<p class="meta">Nothing here.</p>{% endfor %}
+<header class="top">
+  <div class="brand">Bellhaven CRM sync <span>· Review queue</span></div>
+  <div class="stats" aria-label="Queue status">
+    <span><b>{{ status_counts.get("pending", 0) }}</b> pending</span>
+    <span><b>{{ status_counts.get("applied", 0) }}</b> applied</span>
+    <span><b>{{ status_counts.get("rejected", 0) }}</b> rejected</span>
+    {% set attn = status_counts.get("error", 0) + status_counts.get("needs_reapproval", 0) %}
+    {% if attn %}<span><b>{{ attn }}</b> need attention</span>{% endif %}
+  </div>
+</header>
+
+<nav class="filters" aria-label="Filters">
+  <span class="seg">
+    <a href="{{ link(view='pending', kind=kind_filter) }}" {% if view == 'pending' %}aria-current="page"{% endif %}>To review</a>
+    <a href="{{ link(view='decided', kind=kind_filter) }}" {% if view == 'decided' %}aria-current="page"{% endif %}>Decided</a>
+  </span>
+  <a class="chip" href="{{ link(view=view) }}" {% if not kind_filter %}aria-current="true"{% endif %}>All <span class="n">{{ view_total }}</span></a>
+  {% for k in kinds if view_counts[k] %}
+  <a class="chip k-{{ k }}" href="{{ link(view=view, kind=k) }}" {% if kind_filter == k %}aria-current="true"{% endif %}>
+    <span class="dot" aria-hidden="true"></span>{{ labels[k] }} <span class="n">{{ view_counts[k] }}</span></a>
+  {% endfor %}
+</nav>
+
+<div class="layout">
+  <ul class="list" aria-label="Proposals">
+    {% for p in shown %}
+    <li><a href="{{ link(view=view, kind=kind_filter, id=p.id) }}" {% if selected and p.id == selected.id %}aria-current="true"{% endif %}>
+      {{ kind(p.kind) }}{% if p.status != 'pending' %} <span class="pill {{ p.status }}">{{ p.status|replace('_', ' ') }}</span>{% endif %}
+      <span class="t">{{ p.title }}</span>
+      <span class="m">#{{ p.id }} · {{ p.facility }}</span></a></li>
+    {% else %}<li class="empty">{{ "Nothing left to review." if view == "pending" else "No decisions yet." }}</li>{% endfor %}
+  </ul>
+
+  <main class="detail">
+    {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="flash {{ cat }}" role="status">{{ "✓" if cat == "ok" else "!" }} {{ msg }}</div>{% endfor %}
+
+    {% if selected %}{% set p = selected %}{% set ev = p.evidence %}
+    <section class="panel" aria-labelledby="title">
+      <div class="head">{{ kind(p.kind) }} <span class="pill {{ p.status }}">{{ p.status|replace('_', ' ') }}</span>
+        {% if p.recurrence %}<span class="pill needs_reapproval">recurrence</span>{% endif %}<span>#{{ p.id }} · {{ p.facility }}</span></div>
+      <h1 id="title">{{ p.title }}</h1>
+      <p class="summary">{{ p.summary }}</p>
+
+      {% if p.status in approvable %}
+      <div class="actions">
+        <form method="post" action="/proposals/{{ p.id }}/approve" onsubmit="this.querySelector('button').disabled=true">
+          <input type="hidden" name="view" value="{{ view }}"><input type="hidden" name="kind" value="{{ kind_filter }}">
+          <button class="approve">Approve &amp; write to CRM</button></form>
+        <form method="post" action="/proposals/{{ p.id }}/reject" onsubmit="this.querySelector('button').disabled=true">
+          <input type="hidden" name="view" value="{{ view }}"><input type="hidden" name="kind" value="{{ kind_filter }}">
+          <label class="sr" for="reason"></label>
+          <input id="reason" name="reason" maxlength="500" placeholder="Reason for rejecting (optional)" aria-label="Reason for rejecting">
+          <button class="reject">Reject</button></form>
+        {% if next_id %}<a class="btn next" href="{{ link(view=view, kind=kind_filter, id=next_id) }}">Next →</a>{% endif %}
+      </div>
+      {% else %}
+      <div class="outcome {{ p.status }}">
+        <b>{{ p.status|replace('_', ' ')|capitalize }}</b>{% if p.decided_at %} · {{ p.decided_at }}{% endif %}{% if p.reason %} · {{ p.reason }}{% endif %}
+        {% if p.status == "applied" %}<div>Open in CRM: {% for i in touched(p) %}{{ acct(i) }}{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+      </div>
+      {% if next_id %}<div class="actions"><a class="btn next" href="{{ link(view=view, kind=kind_filter, id=next_id) }}">Next →</a></div>{% endif %}
+      {% endif %}
+    </section>
+
+    {% if ev.sop %}
+    <section class="panel"><h2>Change-of-ownership SOP</h2>
+      <div class="sop">
+        <div class="metric {{ 'hit' if ev.sop.lifetime_revenue and ev.sop.lifetime_revenue > 0 }}"><div class="l">Lifetime revenue</div><div class="v">{{ ev.sop.lifetime_revenue|money }}</div></div>
+        <div class="metric {{ 'hit' if ev.sop.outstanding_ar and ev.sop.outstanding_ar > 0 }}"><div class="l">Outstanding AR</div><div class="v">{{ ev.sop.outstanding_ar|money }}</div></div>
+        <div class="metric"><div class="l">Outcome</div><div class="v">{{ "CHOW — keep old account" if ev.sop.outcome == "CHOW" else "Re-parent directly" }}</div></div>
+        <div class="sop-why">{{ ev.sop.reason[:1]|upper }}{{ ev.sop.reason[1:] }}.</div>
+      </div>
+    </section>{% endif %}
+
+    <section class="panel"><h2>What will change</h2>
+      <table><thead><tr><th>Account</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>
+      {% for d in p.diff %}<tr><td>{{ acct(d.account_id) }}</td><td class="mono">{{ d.field }}</td>
+        <td class="before">{{ d.before if d.before not in (none, "") else "—" }}</td>
+        <td class="after">{% if d.after == "$new" %}→ new account id{% else %}{{ d.after if d.after is not none else "" }}{% endif %}</td></tr>{% endfor %}
+      </tbody></table>
+    </section>
+
+    <div class="cols">
+      <section class="panel"><h2>Website listing</h2>
+        {% if ev.website %}{% set w = ev.website %}
+        <dl><dt>Name</dt><dd>{% if safe_http(w.url) %}<a href="{{ w.url }}" target="_blank" rel="noopener">{{ w.name }}</a>{% else %}{{ w.name }}{% endif %}</dd>
+          <dt>Address</dt><dd>{{ w.street }}, {{ w.city }}, {{ w.state }} {{ w.zip }}</dd>
+          <dt>Care</dt><dd class="tags">{% for o in w.offerings or [] %}<span>{{ o }}</span>{% endfor %}</dd>
+          {% if w.administrator %}<dt>Administrator</dt><dd>{{ w.administrator }}</dd>{% endif %}
+          {% if w.phone %}<dt>Phone</dt><dd>{{ w.phone }}</dd>{% endif %}</dl>
+        {% else %}<p class="summary">Not listed on the Bellhaven website.</p>{% endif %}
+      </section>
+      <section class="panel"><h2>How it matched</h2>
+        <dl><dt>Rule</dt><dd>{{ ev.match_rule or "—" }}</dd>
+          <dt>CRM accounts</dt><dd>{{ ev.candidates|length }} at this address</dd>
+          <dt>Checked, not matched</dt><dd>{{ ev.near_misses|length }} look-alike{{ "s" if ev.near_misses|length != 1 }}</dd></dl>
+        {% if ev.notes %}<ul>{% for n in ev.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+      </section>
+    </div>
+
+    {% if ev.candidates %}<section class="panel"><h2>CRM accounts at this address</h2>{{ accts(ev.candidates) }}
+      {% if ev.survivor_ranking %}<h2 style="margin-top:16px">Which record survives</h2><ol>{% for r in ev.survivor_ranking %}<li>{{ r }}</li>{% endfor %}</ol>{% endif %}
+    </section>{% endif %}
+    {% if ev.near_misses %}<section class="panel"><h2>Look-alikes checked and rejected (different address)</h2>{{ accts(ev.near_misses) }}</section>{% endif %}
+
+    <section class="panel"><details><summary>Exact API payload</summary><pre>{{ p.steps|pretty }}</pre>
+      {% if p.result %}<pre>{{ p.result|pretty }}</pre>{% endif %}</details></section>
+    {% else %}<p class="empty">Select a proposal.</p>{% endif %}
+  </main>
+</div>
 {% endblock %}

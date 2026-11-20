@@ -24,7 +24,7 @@ def test_index_shows_titles_and_sop():
     _, _, c = make()
     html = c.get("/").get_data(as_text=True)
     assert "CHOW: create new Bellhaven account" in html and "Mark Harborview" in html
-    assert "$84,000" in html and "$12,400" in html and "(new account)" in html
+    assert "$84,000" in html and "$12,400" in html and "new account" in html
 
 
 def test_script_title_escaped():
@@ -37,7 +37,7 @@ def test_script_title_escaped():
 def test_approve_calls_fn_once_and_redirects():
     _, calls, c = make()
     r = c.post("/proposals/1/approve")
-    assert r.status_code == 302 and r.headers["Location"].endswith("#p1") and calls == [1]
+    assert r.status_code == 302 and "id=1" in r.headers["Location"] and calls == [1]
 
 
 def test_approve_rejected_not_called():

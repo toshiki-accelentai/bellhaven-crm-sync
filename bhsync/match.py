@@ -186,7 +186,8 @@ def facility_proposal(loc: Location, acct: dict, evidence: dict) -> dict | None:
                      _diff(aid, acct, want), before, [{"op": "patch", "account_id": aid, "fields": want}], evidence)
 
 
-def duplicate_proposal(loser: dict, survivor: dict, loc: Location, ranking: list[str], rule: str) -> dict:
+def duplicate_proposal(loser: dict, survivor: dict, loc: Location, ranking: list[str], rule: str,
+                       group: list[dict] = ()) -> dict:
     lid, sid = loser["account_id"], survivor["account_id"]
     fields = {"duplicate_of_account": sid, "status": "Inactive",
               "note": append_note(loser["note"], f"Duplicate of {sid} ({survivor['name']}): same facility "
@@ -200,7 +201,7 @@ def duplicate_proposal(loser: dict, survivor: dict, loc: Location, ranking: list
         {lid: {k: loser[k] for k in ("status", "duplicate_of_account", "note")},
          sid: {k: survivor[k] for k in ("duplicate_of_account", "chow_current_account")}},
         [{"op": "patch", "account_id": lid, "fields": fields}],
-        {"website": loc.to_dict(), "match_rule": rule, "survivor_ranking": ranking})
+        {"website": loc.to_dict(), "match_rule": rule, "survivor_ranking": ranking, "candidates": list(group)})
 
 
 def stale_proposal(acct: dict) -> dict:
@@ -263,7 +264,7 @@ def build(locations: list[Location], accounts: list[dict], contacts: list[dict],
         prop = facility_proposal(loc, survivor, evidence)
         if prop:
             proposals.append(prop)
-        proposals += [duplicate_proposal(a, survivor, loc, ranking, rule) for a in ranked[1:]]
+        proposals += [duplicate_proposal(a, survivor, loc, ranking, rule, evidence["candidates"]) for a in ranked[1:]]
         status = prop["kind"] if prop else "CONFIDENT MATCH"
         report.append(_row(loc, status + (f" +{len(ranked) - 1} DUPLICATE" if len(ranked) > 1 else ""),
                            survivor["account_id"], rule))

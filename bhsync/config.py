@@ -9,8 +9,8 @@ BASE = os.environ.get("BH_BASE", "https://analyst-assessment-production.up.railw
 API = f"{BASE}/api/v1"
 TOKEN = os.environ.get("BH_TOKEN", "")
 DB_PATH = os.environ.get("BH_DB", "data/bhsync.db")
-# Read-only CRM browser link for an account; set BH_CRM_URL to the browser's per-account URL template.
-CRM_URL = os.environ.get("BH_CRM_URL", API + "/accounts/{id}")
+# Read-only CRM browser page for an account (the browser URL embeds the token, so it is built, never committed).
+CRM_URL = os.environ.get("BH_CRM_URL", f"{BASE}/crm/{TOKEN}/accounts/" + "{id}")
 
 PARENT_NAME = "Bellhaven Senior Living (Parent Account)"
 PARENT_ID = "0015QAPLGS3FVYEEEM"

@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "review",
+      "runtimeExecutable": ".venv/Scripts/python",
+      "runtimeArgs": ["-m", "bhsync", "serve", "--port", "5000"],
+      "port": 5000
+    },
+    {
       "name": "review-dry",
       "runtimeExecutable": ".venv/Scripts/python",
       "runtimeArgs": ["-m", "bhsync", "serve", "--dry-run", "--port", "5055"],

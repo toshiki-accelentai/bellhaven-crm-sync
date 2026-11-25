@@ -110,4 +110,4 @@ Timeline from file, commit and audit timestamps (local time). Elapsed wall-clock
 | First real write (Portsmouth), checked in the audit log + CRM before continuing | 09:50 | |
 | Review UI rework for the demo, review of all proposals, demo recording | later in the day, finished 15:52 | |
 
-**Focused time:** _≈ X h (fill in honestly)_
+**Focused time:** 2h 5min
